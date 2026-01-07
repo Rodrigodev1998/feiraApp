@@ -4,9 +4,25 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Card } from "@/components/ui/card"
 import { Plus, ShoppingCart, LogOut } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { signOut } from "firebase/auth"
+import { auth } from "@/lib/firebase"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/context/AuthContext";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  addDoc,
+  getDocs,
+  orderBy,
+  query,
+  Timestamp,
+} from "firebase/firestore"
+import Image from "next/image"
+
 
 interface Cart {
+  id:string
   name: string
   description: string
 }
@@ -15,17 +31,80 @@ export default function Home() {
   const [carts, setCarts] = useState<Cart[]>([])
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
+  const router = useRouter();
+  const { user } = useAuth();
 
-  function handleSave() {
-    setCarts([...carts, { name, description }])
+  useEffect(() => {
+    if (!user) return
+    const uid = user.uid
+    async function loadCarts() {
+      const q = query(
+        collection(db, "users", uid, "carts"),
+        orderBy("createdAt", "desc")
+      )
+
+      const snapshot = await getDocs(q)
+
+      const cartsData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() as Omit<Cart, "id">),
+      }))
+
+      setCarts(cartsData)
+    }
+
+    loadCarts()
+  }, [user])
+
+  async function handleSave() {
+    if (!user || !name.trim()) return
+
+    const docRef = await addDoc(
+      collection(db, "users", user.uid, "carts"),
+      {
+        name,
+        description,
+        createdAt: Timestamp.now(),
+      }
+    )
+
+    setCarts([
+      {
+        id: docRef.id,
+        name,
+        description,
+      },
+      ...carts,
+    ])
+
     setName("")
     setDescription("")
   }
 
+  async function handleLogout() {
+    await signOut(auth);
+    router.push("/login");
+  }
+
   return (
     <div className="min-h-screen p-4 bg-white">
-      <div className="flex justify-end mb-4">
-        <Button variant="ghost" size="icon">
+      <div className="flex justify-between items-center mb-4">
+        <div className="flex items-center gap-2">
+          {user?.photoURL && (
+            <Image
+              src={user.photoURL}
+              alt="Foto do usuário"
+              width={32}
+              height={32}
+              className="rounded-full"
+            />
+          )}
+          <span className="text-sm font-medium">
+            {user?.displayName}
+          </span>
+        </div>
+
+        <Button onClick={handleLogout} variant="ghost" size="icon">
           <LogOut className="h-5 w-5" />
         </Button>
       </div>
@@ -56,9 +135,10 @@ export default function Home() {
           </DialogContent>
         </Dialog>
 
-        {carts.map((cart, index) => (
+        {carts.map((cart) => (
           <Card
-            key={index}
+            key={cart.id}
+            onClick={() => router.push(`/cart-items/${cart.id}`)}
             className="w-28 h-28 p-2 text-center flex flex-col items-center justify-center cursor-pointer hover:shadow-md"
           >
             <div className="font-semibold text-sm">{cart.name}</div>
