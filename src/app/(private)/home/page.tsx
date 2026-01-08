@@ -15,6 +15,9 @@ import {
   addDoc,
   getDocs,
   orderBy,
+  updateDoc, 
+  deleteDoc, 
+  doc,
   query,
   Timestamp,
 } from "firebase/firestore"
@@ -31,6 +34,7 @@ export default function Home() {
   const [carts, setCarts] = useState<Cart[]>([])
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
+  const [editingCart, setEditingCart] = useState<Cart | null>(null)
   const router = useRouter();
   const { user } = useAuth();
 
@@ -86,6 +90,45 @@ export default function Home() {
     router.push("/login");
   }
 
+  async function handleEditCart() {
+  if (!user || !editingCart) return
+  const uid = user.uid
+
+  await updateDoc(
+    doc(db, "users", uid, "carts", editingCart.id),
+    {
+      name: editingCart.name,
+      description: editingCart.description,
+    }
+  )
+
+  setCarts(prev =>
+    prev.map(cart =>
+      cart.id === editingCart.id ? editingCart : cart
+    )
+  )
+
+  setEditingCart(null)
+}
+
+  async function handleDeleteCart(cartId: string) {
+  if (!user) return
+  const uid = user.uid
+
+  const itemsSnap = await getDocs(
+    collection(db, "users", uid, "carts", cartId, "items")
+  )
+
+  for (const item of itemsSnap.docs) {
+    await deleteDoc(item.ref)
+  }
+
+  await deleteDoc(doc(db, "users", uid, "carts", cartId))
+
+  setCarts(prev => prev.filter(cart => cart.id !== cartId))
+}
+
+
   return (
     <div className="min-h-screen p-4 bg-white">
       <div className="flex justify-between items-center mb-4">
@@ -137,15 +180,107 @@ export default function Home() {
 
         {carts.map((cart) => (
           <Card
-            key={cart.id}
-            onClick={() => router.push(`/cart-items/${cart.id}`)}
-            className="w-28 h-28 p-2 text-center flex flex-col items-center justify-center cursor-pointer hover:shadow-md"
-          >
-            <div className="font-semibold text-sm">{cart.name}</div>
-            <div className="text-xs text-gray-500">{cart.description}</div>
-          </Card>
+              key={cart.id}
+              onClick={() => router.push(`/cart-items/${cart.id}`)}
+              className="
+                relative w-40 h-40 p-4
+                flex flex-col justify-between
+                rounded-xl border border-gray-200 bg-white
+                cursor-pointer
+                transition-all duration-200
+                hover:shadow-md hover:-translate-y-0.5
+              "
+            >
+
+              <div className="flex justify-between items-start">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setEditingCart(cart)
+                  }}
+                  className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+                  title="Editar carrinho"
+                >
+                  ✏️
+                </button>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDeleteCart(cart.id)
+                  }}
+                  className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition"
+                  title="Excluir carrinho"
+                >
+                  🗑️
+                </button>
+              </div>
+
+              <div className="flex flex-col items-center justify-center flex-1 text-center px-2">
+                <span className="text-sm font-semibold text-gray-800 truncate w-full">
+                  {cart.name}
+                </span>
+
+                {cart.description && (
+                  <span className="mt-1 text-xs text-gray-500 line-clamp-2">
+                    {cart.description}
+                  </span>
+                )}
+              </div>
+
+              <div className="text-xs text-gray-500 text-center font-medium">
+                Abrir carrinho →
+              </div>
+            </Card>
+
         ))}
       </div>
+
+      <Dialog open={!!editingCart} onOpenChange={() => setEditingCart(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Editar Carrinho</DialogTitle>
+            </DialogHeader>
+
+            <Input
+              value={editingCart?.name ?? ""}
+              onChange={(e) =>
+                setEditingCart(prev => prev && { ...prev, name: e.target.value })
+              }
+            />
+            <Input
+              value={editingCart?.description ?? ""}
+              onChange={(e) =>
+                setEditingCart(prev => prev && { ...prev, description: e.target.value })
+              }
+            />
+
+            <Button onClick={handleEditCart}>Salvar</Button>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={!!editingCart} onOpenChange={() => setEditingCart(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Editar Carrinho</DialogTitle>
+            </DialogHeader>
+
+            <Input
+              value={editingCart?.name ?? ""}
+              onChange={(e) =>
+                setEditingCart(prev => prev && { ...prev, name: e.target.value })
+              }
+            />
+            <Input
+              value={editingCart?.description ?? ""}
+              onChange={(e) =>
+                setEditingCart(prev => prev && { ...prev, description: e.target.value })
+              }
+            />
+
+            <Button onClick={handleEditCart}>Salvar</Button>
+          </DialogContent>
+        </Dialog>
+
     </div>
   )
 }
